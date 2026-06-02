@@ -1,5 +1,4 @@
 
-from random import randint
 from scripts_of_tribute.board import GameState
 def max_prestige(gameState: GameState) -> int:
     player = gameState.current_player

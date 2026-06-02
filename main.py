@@ -15,7 +15,7 @@ def main():
         "patronmaxxer",
         start_game_runner=True,
         runs=10,
-        threads=1,
+        threads=10,
     )
 
 if __name__ == "__main__":

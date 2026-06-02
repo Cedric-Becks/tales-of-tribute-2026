@@ -5,8 +5,8 @@ from typing import Callable
 from typing import List
 from typing import Tuple
 
-from random import randint
-from cmath import log, sqrt, inf
+from random import randrange
+from math import log, sqrt, inf
 from abc import ABC, abstractmethod
 
 from scripts_of_tribute.move import BasicMove
@@ -37,7 +37,7 @@ class Search(ABC):
     def expand(self, move: BasicMove) -> None:
         pass
 
-    def ucbScore(self, simulations: int) -> complex | float:
+    def ucbScore(self, simulations: int) -> float:
         if self.visits == 0:
             return self.maxScore
         if self.fullyExpanded:
@@ -47,17 +47,17 @@ class Search(ABC):
 
 
 class MCTSNode(Search):
-    realMoves: List[BasicMove]
+    real_moves: List[BasicMove]
 
     def __init__(self, gameState: GameState, moves: List[BasicMove]):
         self.gameState = gameState
         if moves is None or len(moves) <= 1:
-            self.moves = moves
+            self.real_moves = moves
             self.leaf = True
             self.fullyExpanded = True
         else:
             self.children = {move: None for move in moves}
-            self.moves = [x for x in moves if x.command != MoveEnum.END_TURN]
+            self.real_moves = [x for x in moves if x.command != MoveEnum.END_TURN]
 
     def expand(self, move: BasicMove) -> None:
         if move.command == MoveEnum.END_TURN:
@@ -70,15 +70,15 @@ class MCTSNode(Search):
         if self.leaf:
             return heuristic(self.gameState), 0
         moveCount = 0
-        moves: list[BasicMove] = self.realMoves
-        move: BasicMove = moves[randint(0,len(moves))]
+        moves: list[BasicMove] = self.real_moves
+        move: BasicMove = moves[randrange(len(moves))]
         state: GameState = self.gameState
         while (move.command != MoveEnum.END_TURN):
             moveCount += 1
             state, moves = state.apply_move(move)
             moves = [x for x in moves if x.command != MoveEnum.END_TURN]
             if (len(moves) > 0):
-                move = moves[randint(0,len(moves))]
+                move = moves[randrange(len(moves))]
             else:
                 break
         return heuristic(state), moveCount

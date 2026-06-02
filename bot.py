@@ -1,4 +1,4 @@
-from typing import Optional
+from random import randrange
 from scripts_of_tribute.enums import MoveEnum
 from random import randint
 from scripts_of_tribute.board import SeededGameState
@@ -46,6 +46,7 @@ class ISMCTSBot(BaseAI):
             game_state.enemy_player, 
             game_state.completed_actions, 
             game_state.tavern_cards, 
+            # pyrefly: ignore [bad-argument-type]
             game_state.pending_choice, 
             game_state.end_game_state, 
             self.seed, 
@@ -61,40 +62,41 @@ class ISMCTSBot(BaseAI):
             return score, num_moves+tmp_moves
         num_moves += 1
         max_score = node.minScore
-        max_child: Optional[Search] = None
-        max_move: BasicMove
-        for child, move in node.children:
+        max_move: BasicMove = None
+        for move in node.children:
+            child = node.children[move]
+            score: float = node.maxScore
             if child is not None:
-                score: float = child.ucbScore(node.visits)
-                if score > max_score:
-                    max_child = child
-                    max_move = move
-                    max_score = score
+                score = child.ucbScore(node.visits)
+            if score > max_score:
+                max_move = move
+                max_score = score
         
-        if max_child is None:
+        if node.children[max_move] is None:
             node.expand(max_move)
 
+        # pyrefly: ignore [bad-argument-type]
         result, num_moves = self.run(node.children[max_move], num_moves)
 
         fully_expanded = True
         for move in node.children:
-            fully_expanded &= node.children[move] is not None and node.children[move].fullyExpanded
+            child= node.children[move]
+            fully_expanded &= (child is not None and child.fullyExpanded)
         node.fullyExpanded = fully_expanded
         node.visits += 1
         node.score = max(node.score, result)
         return result, num_moves
+
     def pregame_prepare(self) -> None:
             """Optional: Prepare your bot before the game starts."""
             pass
 
     def select_patron(self, available_patrons: List[PatronId]) -> PatronId:
-        """Choose a patron from the available list."""
-        priority: int = randint(0,len(available_patrons)-1)
+        priority: int = randrange(len(available_patrons))
         return available_patrons[priority]
 
 
     def play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
-        startTime: float = time()
         if len(possible_moves) == 1:
             return possible_moves[0]
         
@@ -103,7 +105,7 @@ class ISMCTSBot(BaseAI):
             self.tree = self.searchTree(self.convert_gamestate(game_state), possible_moves)
             self.turnStart = False
         
-        bestMove: BasicMove = possible_moves[randint(0,len(possible_moves))]
+        bestMove: BasicMove = possible_moves[randrange(len(possible_moves))]
         runtime = time()
         num_moves = 0
         for i in range(self.repeats):
@@ -115,9 +117,12 @@ class ISMCTSBot(BaseAI):
             if bestMove.command == MoveEnum.END_TURN:
                 self.turnStart = True
             return bestMove
+        ref_time = time()
+        while(not self.tree.fullyExpanded and time() - ref_time < runtime):
+            self.run(self.tree, 0)
 
         max_score = 0
-        max_child: Search
+        max_child: Search = None
         for move in self.tree.children:
             child = self.tree.children[move] 
             if child is not None and child.score > max_score:
