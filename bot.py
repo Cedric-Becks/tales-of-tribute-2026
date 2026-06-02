@@ -89,7 +89,7 @@ class ISMCTSBot(BaseAI):
 
     def select_patron(self, available_patrons: List[PatronId]) -> PatronId:
         """Choose a patron from the available list."""
-        priority: int = randint(0,len(available_patrons))
+        priority: int = randint(0,len(available_patrons)-1)
         return available_patrons[priority]
 
 
