@@ -20,7 +20,7 @@ def main(run_game: bool):
         game.register_bot(greedy_bot)
 
         game.run(
-        "MCTS",
+        "MCTSBot",
         "greedy",
         start_game_runner=True,
         runs=RUNS,

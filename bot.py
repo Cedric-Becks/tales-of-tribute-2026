@@ -139,12 +139,6 @@ class ISMCTSBot(BaseAI):
         # discards simulation states once the real game advances.
         self.tree = self.searchTree(self.convert_gamestate(game_state), possible_moves)
 
-
-        if self.turnStart:
-            # Winner Selects strategy here
-            self.tree = self.searchTree(self.convert_gamestate(game_state), possible_moves)
-            self.turnStart = False
-
         bestMove: BasicMove = possible_moves[randrange(len(possible_moves))]
         runtime = time()
         num_moves = 0
