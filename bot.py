@@ -3,7 +3,7 @@ from scripts_of_tribute.enums import MoveEnum
 from random import randint
 from scripts_of_tribute.board import SeededGameState
 from search import MCTSNode
-from heuristics import max_prestige
+from heuristics import max_prestige, greedy_heuristic
 from scripts_of_tribute.base_ai import BaseAI
 from scripts_of_tribute.enums import PatronId
 from scripts_of_tribute.move import BasicMove
@@ -93,7 +93,7 @@ class ISMCTSBot(BaseAI):
             score: float = node.maxScore
             if child is not None:
                 score = child.ucbScore(node.visits)
-            if score > max_score:
+            if score >= max_score:
                 max_move = move
                 max_score = score
         
@@ -122,9 +122,23 @@ class ISMCTSBot(BaseAI):
 
     def play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
         self.context.add_state(game_state)
+        try:
+            return self._play(game_state, possible_moves, remaining_time)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return possible_moves[0]
+
+    def _play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
         if len(possible_moves) == 1:
             self.context.add_move(possible_moves[0])
             return possible_moves[0]
+
+        # Always rebuild from the authoritative game_state. Reusing simulated
+        # states across play() calls causes KeyNotFoundErrors because the engine
+        # discards simulation states once the real game advances.
+        self.tree = self.searchTree(self.convert_gamestate(game_state), possible_moves)
+
 
         if self.turnStart:
             # Winner Selects strategy here
@@ -137,31 +151,30 @@ class ISMCTSBot(BaseAI):
         for i in range(self.repeats):
             _, single_num_moves = self.run(self.tree, num_moves)
             num_moves = max(single_num_moves, num_moves)
-        runtime = min((time() - runtime)/num_moves, self.moveTimeout)
+
+        if num_moves == 0:
+            return bestMove
+
+        runtime = min((time() - runtime) / num_moves, self.moveTimeout)
 
         if runtime < 0.1:
-            if bestMove.command == MoveEnum.END_TURN:
-                self.turnStart = True
             self.context.add_move(bestMove)
             return bestMove
+
         ref_time = time()
-        while(not self.tree.fullyExpanded and time() - ref_time < runtime):
+        while not self.tree.fullyExpanded and time() - ref_time < runtime:
             self.run(self.tree, 0)
 
-        max_score = 0
-        max_child: Search = None
+        max_score = self.tree.minScore
         for move in self.tree.children:
-            child = self.tree.children[move] 
+            child = self.tree.children[move]
             if child is not None and child.score > max_score:
                 bestMove = move
                 max_score = child.score
-                max_child = child
-        self.tree = max_child
 
         if bestMove.command == MoveEnum.END_TURN:
             self.turnStart = True
 
-        self.context.add_move(bestMove)
         return bestMove
 
     def game_end(self, end_game_state: EndGameState, final_state: GameState) -> None:

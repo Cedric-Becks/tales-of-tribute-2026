@@ -1,5 +1,5 @@
 from search import MCTSNode
-from heuristics import max_prestige, max_patrons
+from heuristics import greedy_heuristic, max_prestige, max_patrons
 from scripts_of_tribute.game import Game
 from bot import ISMCTSBot, Context
 
@@ -9,6 +9,7 @@ THREADS=1
 RUNS=1
 
 def main(run_game: bool):
+    greedy_bot = ISMCTSBot("greedy", MCTSNode, greedy_heuristic)
     game = Game()
     context = Context()
     if run_game:
@@ -16,11 +17,12 @@ def main(run_game: bool):
         player_two = ISMCTSBot("patronmaxxer", MCTSNode, max_patrons, context)
         game.register_bot(player_one)
         game.register_bot(player_two)
-    
+    game.register_bot(greedy_bot)
+
         game.run(
-            "prestigemaxxer",
-            "patronmaxxer",
-            start_game_runner=True,
+                "patronmaxxer",
+            "greedy",
+        start_game_runner=True,
             runs=RUNS,
             threads=THREADS,
         )
