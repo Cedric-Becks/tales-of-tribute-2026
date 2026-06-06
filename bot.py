@@ -47,7 +47,7 @@ class Context:
 class ISMCTSBot(BaseAI):
     context: Context
     searchTree: type[Search]  = MCTSNode
-    heuristic: Callable[[GameState], int | float]
+    heuristic: Callable[[GameState], float]
     turnTimeout = 10.
     moveTimeout = 0.8
     repeats = 20
@@ -56,7 +56,7 @@ class ISMCTSBot(BaseAI):
     treeNumber = 1
     tree: Search
 
-    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], int]) -> None:
+    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], float]) -> None:
         super().__init__(bot_name=name)
         self.searchTree = search_tree
         self.heuristic = heuristic

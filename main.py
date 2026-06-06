@@ -3,6 +3,7 @@ from search import MCTSNode
 from heuristics import greedy_heuristic, max_prestige, max_patrons
 from scripts_of_tribute.game import Game
 from scripts_of_tribute.server import Server, AIService
+from scripts_of_tribute.runner import run_game_runner
 from bot import ISMCTSBot
 
 import grpc
@@ -44,7 +45,7 @@ def main(run_game: bool):
         game.register_bot(greedy_bot)
 
         game.run(
-        "MCTSBot",
+        "RandomBot",
         "greedy",
         start_game_runner=True,
         runs=RUNS,

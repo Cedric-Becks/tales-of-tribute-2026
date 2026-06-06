@@ -3,12 +3,12 @@ from scripts_of_tribute.board import GameState, EnemyPlayer, PatronId
 from scripts_of_tribute.enums import CardType
 
 
-def max_prestige(gameState: GameState) -> int:
+def max_prestige(gameState: GameState) -> float:
     player = gameState.current_player
     return player.prestige + player.power
 
 
-def max_patrons(gameState: GameState) -> int:
+def max_patrons(gameState: GameState) -> float:
     player = gameState.current_player.player_id
     patrons = gameState.patron_states.patrons
     return sum([1 for x in patrons if patrons[x] == player])
