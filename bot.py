@@ -35,8 +35,13 @@ class Context:
         self.moves.append(move)
     
     def add_state(self, state: GameState):
-        if len(self.states) == 0 or len(self.states) == len(self.moves): 
-            self.states.append(state)
+        self.states.append(state)
+
+    def get_features(self):
+        features = []
+        for i in range(len(self.moves)):
+            features.append((self.states[i],self.moves[i],self.states[i+1], self.result))
+
 
     def __str__(self):
         return str(len(self.moves)) + ", " + str(len(self.states))
@@ -52,12 +57,12 @@ class ISMCTSBot(BaseAI):
     treeNumber = 1
     tree: Search
 
-    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], int], context: Context) -> None:
+    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], int]) -> None:
         super().__init__(bot_name=name)
         self.searchTree = search_tree
         self.heuristic = heuristic
         self.seed = randint(0,1000000)
-        self.context = context
+        self.context = Context()
 
     def convert_gamestate(self, game_state: GameState) -> SeededGameState:
         return SeededGameState(
@@ -173,4 +178,6 @@ class ISMCTSBot(BaseAI):
 
     def game_end(self, end_game_state: EndGameState, final_state: GameState) -> None:
         self.context.add_state(final_state)
+        self.context.reason = end_game_state.reason
+        self.context.result = end_game_state.winner
         print("Results " + self.bot_name + ":" + str(self.context))
