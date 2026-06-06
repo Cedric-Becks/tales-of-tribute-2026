@@ -3,7 +3,6 @@ from scripts_of_tribute.enums import MoveEnum
 from random import randint
 from scripts_of_tribute.board import SeededGameState
 from search import MCTSNode
-from heuristics import max_prestige, greedy_heuristic
 from scripts_of_tribute.base_ai import BaseAI
 from scripts_of_tribute.enums import PatronId
 from scripts_of_tribute.move import BasicMove
@@ -48,7 +47,7 @@ class Context:
 class ISMCTSBot(BaseAI):
     context: Context
     searchTree: type[Search]  = MCTSNode
-    heuristic: Callable[[GameState], int] = max_prestige
+    heuristic: Callable[[GameState], int | float]
     turnTimeout = 10.
     moveTimeout = 0.8
     repeats = 20
