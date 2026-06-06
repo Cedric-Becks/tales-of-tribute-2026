@@ -16,8 +16,32 @@ from typing import List
 from typing import Tuple
 from typing import Callable
 
-class ISMCTSBot(BaseAI):
+class Context:
+    moves: List[BasicMove]
+    states: List[GameState]
+    result: str = ""
+    reason: str = ""
+    def __init__(self):
+        self.moves = []
+        self.state = []
 
+    def refresh(self):
+        self.moves = []
+        self.state = []
+        self.result = ""
+        self.reason = ""
+        
+    def add_move(self, move: BasicMove):
+        self.moves.append(move)
+    
+    def add_state(self, state: GameState):
+        if len(self.states) == 0 or len(self.states) == len(self.moves): 
+            self.states.append(state)
+
+    def __str__(self):
+        return str(len(self.moves)) + ", " + str(len(self.state))
+class ISMCTSBot(BaseAI):
+    context: Context
     searchTree: type[Search]  = MCTSNode
     heuristic: Callable[[GameState], int] = max_prestige
     turnTimeout = 10.
@@ -28,11 +52,12 @@ class ISMCTSBot(BaseAI):
     treeNumber = 1
     tree: Search
 
-    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], int]) -> None:
+    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], int], context: Context) -> None:
         super().__init__(bot_name=name)
         self.searchTree = search_tree
         self.heuristic = heuristic
         self.seed = randint(0,1000000)
+        self.context = context
 
     def convert_gamestate(self, game_state: GameState) -> SeededGameState:
         return SeededGameState(
@@ -95,16 +120,17 @@ class ISMCTSBot(BaseAI):
         priority: int = randrange(len(available_patrons))
         return available_patrons[priority]
 
-
     def play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
+        self.context.add_state(game_state)
         if len(possible_moves) == 1:
+            self.context.add_move(possible_moves[0])
             return possible_moves[0]
-        
+
         if self.turnStart:
             # Winner Selects strategy here
             self.tree = self.searchTree(self.convert_gamestate(game_state), possible_moves)
             self.turnStart = False
-        
+
         bestMove: BasicMove = possible_moves[randrange(len(possible_moves))]
         runtime = time()
         num_moves = 0
@@ -116,6 +142,7 @@ class ISMCTSBot(BaseAI):
         if runtime < 0.1:
             if bestMove.command == MoveEnum.END_TURN:
                 self.turnStart = True
+            self.context.add_move(bestMove)
             return bestMove
         ref_time = time()
         while(not self.tree.fullyExpanded and time() - ref_time < runtime):
@@ -134,9 +161,9 @@ class ISMCTSBot(BaseAI):
         if bestMove.command == MoveEnum.END_TURN:
             self.turnStart = True
 
+        self.context.add_move(bestMove)
         return bestMove
 
-
     def game_end(self, end_game_state: EndGameState, final_state: GameState) -> None:
-        """Optional: Handle end-of-game logic."""
-        pass
+        self.context.add_state(final_state)
+        print("Results " + self.bot_name + ":" + str(self.context))
