@@ -23,11 +23,11 @@ class Context:
     reason: str = ""
     def __init__(self):
         self.moves = []
-        self.state = []
+        self.states = []
 
     def refresh(self):
         self.moves = []
-        self.state = []
+        self.states = []
         self.result = ""
         self.reason = ""
         
@@ -39,7 +39,7 @@ class Context:
             self.states.append(state)
 
     def __str__(self):
-        return str(len(self.moves)) + ", " + str(len(self.state))
+        return str(len(self.moves)) + ", " + str(len(self.states))
 class ISMCTSBot(BaseAI):
     context: Context
     searchTree: type[Search]  = MCTSNode
@@ -168,7 +168,7 @@ class ISMCTSBot(BaseAI):
         max_score = self.tree.minScore
         for move in self.tree.children:
             child = self.tree.children[move]
-            if child is not None and child.score > max_score:
+            if child is not None and child.score >= max_score:
                 bestMove = move
                 max_score = child.score
 
