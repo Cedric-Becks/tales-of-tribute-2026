@@ -69,4 +69,4 @@ def main(run_game: bool):
             pass
 
 if __name__ == "__main__":
-    main(False)
+    main(True)

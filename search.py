@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+from functools import total_ordering
 from typing import Optional
 from typing import Callable
 from typing import List
@@ -13,14 +14,14 @@ from scripts_of_tribute.move import BasicMove
 from scripts_of_tribute.enums import MoveEnum
 from scripts_of_tribute.board import GameState
 
-
+@total_ordering
 class Search(ABC):
     children: dict[BasicMove, Optional[Search]] = {}
     visits: int = 0
     fullyExpanded: bool = False
     maxScore: float = inf
     minScore: float = -inf
-    score: int = 0
+    score: float = 0
     leaf: bool = False
 
     gameState: GameState
@@ -29,12 +30,22 @@ class Search(ABC):
     def __init__(self, gameState: GameState, moves: List[BasicMove]):
         pass
 
+    def __lt__(self, other: object):
+        if not hasattr(other, "score"):
+            return False
+        return self.score < other.score
+
+    def __eq__(self, other: object):
+        if not hasattr(other, "score"):
+            return False
+        return self.score == other.score
+
     @abstractmethod
-    def simulate(self, heuristic: Callable[[GameState], int]) -> Tuple[int, int]:
+    def simulate(self, heuristic: Callable[[GameState], float]) -> Tuple[float, int]:
         pass
 
     @abstractmethod
-    def expand(self, move: BasicMove) -> None:
+    def expand(self, move: BasicMove, heuristic: Callable[[GameState], float]) -> None:
         pass
 
     def ucbScore(self, simulations: int) -> float:
@@ -59,14 +70,19 @@ class MCTSNode(Search):
             self.children = {move: None for move in moves}
             self.real_moves = [x for x in moves if x.command != MoveEnum.END_TURN]
 
-    def expand(self, move: BasicMove) -> None:
+    def expand(self, move: BasicMove, heuristic: Callable[[GameState], float]) -> None:
         if move.command == MoveEnum.END_TURN:
             self.children[move] = MCTSNode(self.gameState, [move])
         else:
             game_state, moves = self.gameState.apply_move(move)
             self.children[move] = MCTSNode(game_state, moves)
+        # pyrefly: ignore [missing-attribute]
+        self.children[move].score = self.children[move].base_score(heuristic)
+    
+    def base_score(self, heuristic: Callable[[GameState], float])-> float:
+        return heuristic(self.gameState)
 
-    def simulate(self, heuristic: Callable[[GameState], int]) -> Tuple[int, int]:
+    def simulate(self, heuristic: Callable[[GameState], float]) -> Tuple[float, int]:
         if self.leaf:
             return heuristic(self.gameState), 0
         moveCount = 0
