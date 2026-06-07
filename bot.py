@@ -23,14 +23,12 @@ class Context:
     def __init__(self):
         self.moves = []
         self.states = []
-        self.card_catalog: dict = {}
 
     def refresh(self):
         self.moves = []
         self.states = []
         self.result = ""
         self.reason = ""
-        self.card_catalog = {}
         
     def add_move(self, move: BasicMove):
         self.moves.append(move)
@@ -38,43 +36,20 @@ class Context:
     def add_state(self, state: GameState):
         self.states.append(state)
 
-    def _card_to_attrs(self, card) -> dict:
-        return {
-            "name": card.name,
-            "deck": card.deck.name,
-            "cost": card.cost,
-            "type": card.type.name,
-            "hp": card.hp,
-            "taunt": card.taunt,
-            "effects": list(card.effects),
-        }
-
     def _serialize_state(self, state: GameState) -> dict:
         me = state.current_player
         enemy = state.enemy_player
         if isinstance(enemy, EnemyPlayer):
-            enemy_card_objs = enemy.hand_and_draw + enemy.played + enemy.cooldown_pile
+            enemy_cards = [c.unique_id for c in enemy.hand_and_draw + enemy.played + enemy.cooldown_pile]
         else:
-            enemy_card_objs = enemy.hand + enemy.draw_pile + enemy.played + enemy.cooldown_pile + enemy.known_upcoming_draws
-
-        all_cards = (
-            me.hand + me.draw_pile + me.cooldown_pile + me.played + me.known_upcoming_draws
-            + [a.representing_card for a in me.agents]
-            + [a.representing_card for a in enemy.agents]
-            + enemy_card_objs
-            + state.tavern_available_cards + state.tavern_cards
-        )
-        for card in all_cards:
-            if card.unique_id not in self.card_catalog:
-                self.card_catalog[card.unique_id] = self._card_to_attrs(card)
-
+            enemy_cards = [c.unique_id for c in enemy.hand + enemy.draw_pile + enemy.played + enemy.cooldown_pile + enemy.known_upcoming_draws]
         return {
             "me": {
                 "prestige": me.prestige,
                 "power": me.power,
                 "coins": me.coins,
                 "patron_calls": me.patron_calls,
-                "agents": [(a.representing_card.unique_id, a.currentHP) for a in me.agents],
+                "agent_hp": [a.currentHP for a in me.agents],
                 "hand": [c.unique_id for c in me.hand],
                 "draw": [c.unique_id for c in me.draw_pile],
                 "cooldown": [c.unique_id for c in me.cooldown_pile],
@@ -84,8 +59,8 @@ class Context:
             "enemy": {
                 "prestige": enemy.prestige,
                 "power": enemy.power,
-                "agents": [(a.representing_card.unique_id, a.currentHP) for a in enemy.agents],
-                "cards": [c.unique_id for c in enemy_card_objs],
+                "agent_hp": [a.currentHP for a in enemy.agents],
+                "cards": enemy_cards,
             },
             "patrons": {k.name: v.name for k, v in state.patron_states.patrons.items()},
             "tavern_available": [c.unique_id for c in state.tavern_available_cards],
@@ -127,7 +102,7 @@ class Context:
         os.makedirs(data_dir, exist_ok=True)
         filename = f"game_{uuid.uuid4().hex[:12]}.pkl"
         with open(os.path.join(data_dir, filename), "wb") as f:
-            pickle.dump({"bot_name": bot_name, "outcome": outcome, "my_player_id": my_id or "PLAYER1", "card_catalog": self.card_catalog, "samples": samples}, f)
+            pickle.dump({"bot_name": bot_name, "outcome": outcome, "samples": samples}, f)
 
     def __str__(self):
         return str(len(self.moves)) + ", " + str(len(self.states))
