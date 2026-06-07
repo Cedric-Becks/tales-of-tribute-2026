@@ -1,10 +1,11 @@
+from bot import FakeBestMCTS3
+from bot import FakeSaccarinaBot
 import multiprocessing
 from search import MCTSNode
 from heuristics import greedy_heuristic, max_prestige, max_patrons
 from scripts_of_tribute.game import Game
 from scripts_of_tribute.server import Server, AIService
 from scripts_of_tribute.runner import run_game_runner
-from bot import ISMCTSBot
 
 import grpc
 from concurrent import futures
@@ -15,7 +16,7 @@ from scripts_of_tribute.base_ai import BaseAI
 BASE_CLIENT_PORT=50000
 BASE_SERVER_PORT=49000
 THREADS=10
-RUNS=500
+RUNS=10
 
 def run_grpc_server(
         bot: BaseAI,
@@ -37,14 +38,14 @@ def run_grpc_server(
 def main(run_game: bool):
     game = Game()
     if run_game:
-        saccarina_bot = ISMCTSBot("saccarina", MCTSNode, greedy_heuristic, strategy="saccarina")
-        mcts3_bot = ISMCTSBot("mcts3", MCTSNode, greedy_heuristic, strategy="mcts3")
+        saccarina_bot = FakeSaccarinaBot("saccarina", MCTSNode, greedy_heuristic, strategy="saccarina")
+        mcts3_bot = FakeBestMCTS3("mcts3", MCTSNode, greedy_heuristic, strategy="mcts3")
         game.register_bot(saccarina_bot)
         game.register_bot(mcts3_bot)
 
         game.run(
             "saccarina",
-            "mcts3",
+            "MCTSBot",
             start_game_runner=True,
             runs=RUNS,
             threads=THREADS,
@@ -57,7 +58,7 @@ def main(run_game: bool):
             p = multiprocessing.Process(
                 target=run_grpc_server,
                 name=f"Bot {i+1} listening on {client_port} and serves {server_port}",
-                args=(ISMCTSBot("prestigemaxxer", MCTSNode, max_prestige), client_port, server_port),
+                args=(FakeSaccarinaBot("prestigemaxxer", MCTSNode, max_prestige), client_port, server_port),
                 #daemon=True
             )
             p.start()

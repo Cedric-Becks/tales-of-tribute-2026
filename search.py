@@ -16,7 +16,7 @@ from scripts_of_tribute.board import GameState
 
 @total_ordering
 class Search(ABC):
-    children: dict[BasicMove, Optional[Search]] = {}
+    children: dict[BasicMove, Optional[Search]]
     visits: int = 0
     fullyExpanded: bool = False
     maxScore: float = inf
@@ -45,15 +45,30 @@ class Search(ABC):
         pass
 
     @abstractmethod
-    def expand(self, move: BasicMove, heuristic: Callable[[GameState], float]) -> None:
+    def expand(self, move: BasicMove) -> None:
         pass
 
-    def ucbScore(self, simulations: int) -> float:
+    def ucb_score(self, simulations: int) -> float:
         if self.visits == 0:
             return self.maxScore
-        if self.fullyExpanded:
-            return self.minScore
-        return self.score + 1.41 * sqrt(log(simulations)/self.visits)
+        return self.score/self.visits + 1.414 * sqrt(log(simulations)/self.visits)
+    
+    def update(self, score: float):
+        self.visits += 1
+        self.score += score
+    
+    def select_winner(self) -> BasicMove:
+        score: float = self.minScore
+        best_move: BasicMove  = list(self.children.keys())[0]
+        for move in self.children:
+            if self.children[move] is None:
+                self.expand(move)
+            # pyrefly: ignore [missing-attribute]
+            if self.children[move].ucb_score(self.visits) > score:
+                best_move= move
+
+        return best_move
+
 
 
 
@@ -66,18 +81,17 @@ class MCTSNode(Search):
             self.real_moves = moves
             self.leaf = True
             self.fullyExpanded = True
+            self.children = {}
         else:
             self.children = {move: None for move in moves}
             self.real_moves = [x for x in moves if x.command != MoveEnum.END_TURN]
 
-    def expand(self, move: BasicMove, heuristic: Callable[[GameState], float]) -> None:
+    def expand(self, move: BasicMove) -> None:
         if move.command == MoveEnum.END_TURN:
             self.children[move] = MCTSNode(self.gameState, [move])
         else:
             game_state, moves = self.gameState.apply_move(move)
             self.children[move] = MCTSNode(game_state, moves)
-        # pyrefly: ignore [missing-attribute]
-        self.children[move].score = self.children[move].base_score(heuristic)
     
     def base_score(self, heuristic: Callable[[GameState], float])-> float:
         return heuristic(self.gameState)
