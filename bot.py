@@ -1,9 +1,12 @@
+import os
+import pickle
+import uuid
 from typing import List
 from typing import Tuple
 from typing import Callable
 
 from scripts_of_tribute.base_ai import BaseAI
-from scripts_of_tribute.board import GameState, SeededGameState, EndGameState
+from scripts_of_tribute.board import GameState, SeededGameState, EndGameState, EnemyPlayer
 from scripts_of_tribute.enums import PatronId, MoveEnum
 from scripts_of_tribute.move import BasicMove
 
@@ -20,12 +23,14 @@ class Context:
     def __init__(self):
         self.moves = []
         self.states = []
+        self.card_catalog: dict = {}
 
     def refresh(self):
         self.moves = []
         self.states = []
         self.result = ""
         self.reason = ""
+        self.card_catalog = {}
         
     def add_move(self, move: BasicMove):
         self.moves.append(move)
@@ -33,11 +38,96 @@ class Context:
     def add_state(self, state: GameState):
         self.states.append(state)
 
-    def get_features(self):
-        features = []
-        for i in range(len(self.moves)):
-            features.append((self.states[i],self.moves[i],self.states[i+1], self.result))
+    def _card_to_attrs(self, card) -> dict:
+        return {
+            "name": card.name,
+            "deck": card.deck.name,
+            "cost": card.cost,
+            "type": card.type.name,
+            "hp": card.hp,
+            "taunt": card.taunt,
+            "effects": list(card.effects),
+        }
 
+    def _serialize_state(self, state: GameState) -> dict:
+        me = state.current_player
+        enemy = state.enemy_player
+        if isinstance(enemy, EnemyPlayer):
+            enemy_card_objs = enemy.hand_and_draw + enemy.played + enemy.cooldown_pile
+        else:
+            enemy_card_objs = enemy.hand + enemy.draw_pile + enemy.played + enemy.cooldown_pile + enemy.known_upcoming_draws
+
+        all_cards = (
+            me.hand + me.draw_pile + me.cooldown_pile + me.played + me.known_upcoming_draws
+            + [a.representing_card for a in me.agents]
+            + [a.representing_card for a in enemy.agents]
+            + enemy_card_objs
+            + state.tavern_available_cards + state.tavern_cards
+        )
+        for card in all_cards:
+            if card.unique_id not in self.card_catalog:
+                self.card_catalog[card.unique_id] = self._card_to_attrs(card)
+
+        return {
+            "me": {
+                "prestige": me.prestige,
+                "power": me.power,
+                "coins": me.coins,
+                "patron_calls": me.patron_calls,
+                "agents": [(a.representing_card.unique_id, a.currentHP) for a in me.agents],
+                "hand": [c.unique_id for c in me.hand],
+                "draw": [c.unique_id for c in me.draw_pile],
+                "cooldown": [c.unique_id for c in me.cooldown_pile],
+                "played": [c.unique_id for c in me.played],
+                "upcoming": [c.unique_id for c in me.known_upcoming_draws],
+            },
+            "enemy": {
+                "prestige": enemy.prestige,
+                "power": enemy.power,
+                "agents": [(a.representing_card.unique_id, a.currentHP) for a in enemy.agents],
+                "cards": [c.unique_id for c in enemy_card_objs],
+            },
+            "patrons": {k.name: v.name for k, v in state.patron_states.patrons.items()},
+            "tavern_available": [c.unique_id for c in state.tavern_available_cards],
+            "tavern_deck": [c.unique_id for c in state.tavern_cards],
+        }
+
+    def _serialize_move(self, move: BasicMove) -> dict:
+        d = {"command": move.command.name}
+        if hasattr(move, "cardUniqueId"):
+            d["card_id"] = move.cardUniqueId
+        if hasattr(move, "patronId"):
+            d["patron_id"] = move.patronId.name
+        if hasattr(move, "cardsUniqueIds"):
+            d["card_ids"] = list(move.cardsUniqueIds)
+        if hasattr(move, "effects"):
+            d["effects"] = list(move.effects)
+        return d
+
+    def get_features(self) -> list:
+        samples = []
+        for i in range(len(self.moves)):
+            try:
+                state_snap = self._serialize_state(self.states[i])
+                move_snap = self._serialize_move(self.moves[i])
+                samples.append({"state": state_snap, "move": move_snap})
+            except Exception:
+                continue
+        return samples
+
+    def save(self, bot_name: str, data_dir: str = "data") -> None:
+        samples = self.get_features()
+        if not samples:
+            return
+        my_id = self.states[0].current_player.player_id.name if self.states else None
+        if self.result and my_id:
+            outcome = 1.0 if self.result == my_id else 0.0
+        else:
+            outcome = 0.5
+        os.makedirs(data_dir, exist_ok=True)
+        filename = f"game_{uuid.uuid4().hex[:12]}.pkl"
+        with open(os.path.join(data_dir, filename), "wb") as f:
+            pickle.dump({"bot_name": bot_name, "outcome": outcome, "my_player_id": my_id or "PLAYER1", "card_catalog": self.card_catalog, "samples": samples}, f)
 
     def __str__(self):
         return str(len(self.moves)) + ", " + str(len(self.states))
@@ -58,10 +148,11 @@ class ISMCTSBot(BaseAI):
 
     time_used: float = 0.
 
-    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], float]) -> None:
+    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], float], strategy: str = "saccarina") -> None:
         super().__init__(bot_name=name)
         self.searchTree = search_tree
         self.heuristic = heuristic
+        self.strategy = strategy
         self.seed = randint(0,1000000)
         self.context = Context()
 
@@ -131,11 +222,14 @@ class ISMCTSBot(BaseAI):
         self.context.add_state(game_state)
         start_time: float = time()
         try:
-            move: BasicMove = self._play_saccarina(game_state, possible_moves, remaining_time)
+            if self.strategy == "mcts3":
+                move: BasicMove = self._play_bestmcts3(game_state, possible_moves, remaining_time)
+            else:
+                move: BasicMove = self._play_saccarina(game_state, possible_moves, remaining_time)
         except Exception:
             import traceback
             traceback.print_exc()
-            move =  possible_moves[0]
+            move = possible_moves[0]
         self.time_used += time() - start_time
         if move.command == MoveEnum.END_TURN:
             self.time_used = 0
@@ -240,4 +334,5 @@ class ISMCTSBot(BaseAI):
         self.context.add_state(final_state)
         self.context.reason = end_game_state.reason
         self.context.result = end_game_state.winner
-        print("Results " + self.bot_name + ":" + str(self.context))
+        self.context.save(self.bot_name)
+        print(f"Results {self.bot_name}: moves={len(self.context.moves)} outcome={end_game_state.winner}", flush=True)

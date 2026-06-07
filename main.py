@@ -14,8 +14,8 @@ from scripts_of_tribute.base_ai import BaseAI
 
 BASE_CLIENT_PORT=50000
 BASE_SERVER_PORT=49000
-THREADS=6
-RUNS=6
+THREADS=10
+RUNS=500
 
 def run_grpc_server(
         bot: BaseAI,
@@ -37,19 +37,17 @@ def run_grpc_server(
 def main(run_game: bool):
     game = Game()
     if run_game:
-        player_one = ISMCTSBot("prestigemaxxer", MCTSNode, max_prestige)
-        player_two = ISMCTSBot("patronmaxxer", MCTSNode, max_patrons)
-        greedy_bot = ISMCTSBot("greedy", MCTSNode, greedy_heuristic)
-        game.register_bot(player_one)
-        game.register_bot(player_two)
-        game.register_bot(greedy_bot)
+        saccarina_bot = ISMCTSBot("saccarina", MCTSNode, greedy_heuristic, strategy="saccarina")
+        mcts3_bot = ISMCTSBot("mcts3", MCTSNode, greedy_heuristic, strategy="mcts3")
+        game.register_bot(saccarina_bot)
+        game.register_bot(mcts3_bot)
 
         game.run(
-        "RandomBot",
-        "greedy",
-        start_game_runner=True,
-        runs=RUNS,
-        threads=THREADS,
+            "saccarina",
+            "mcts3",
+            start_game_runner=True,
+            runs=RUNS,
+            threads=THREADS,
         )
     else:
         processes = []
