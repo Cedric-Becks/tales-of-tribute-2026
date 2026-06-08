@@ -48,7 +48,7 @@ def main(run_game: bool):
 
         game.run(
             "llm",
-            "saccarina",
+            "MCTSBot",
             start_game_runner=True,
             runs=RUNS,
             threads=THREADS,

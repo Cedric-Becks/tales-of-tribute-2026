@@ -1,3 +1,4 @@
+from heuristics import Apriori
 from abc import abstractmethod
 import os
 import pickle
@@ -40,6 +41,12 @@ class LLMBot(BaseAI):
         self.used_time_in_turn = 0.0
         
         self.my_id: Optional[PlayerEnum] = None
+        
+        self.apriori = Apriori()
+        self.patron_log_path = "patronsMCTSBot.txt"
+        self.support_threshold = 4
+        self.confidence_threshold = 0.3
+        self.game_patrons_str = ""
 
     def pregame_prepare(self):
         self.act_root = None
@@ -49,7 +56,17 @@ class LLMBot(BaseAI):
 
     def select_patron(self, available_patrons: List[PatronId]) -> PatronId:
         # Fallback to random choice as Apriori is missing from the port.
-        return self.rng.choice(available_patrons)
+        selected_patron = self.apriori.apriori_best_choice(
+            available_patrons, 
+            self.patron_log_path, 
+            self.support_threshold, 
+            self.confidence_threshold
+        )
+        # If Apriori returns None ("random"), fallback to random choice
+        if selected_patron is None or selected_patron not in available_patrons:
+            return self.rng.choice(available_patrons)
+        
+        return selected_patron
 
     def _check_if_moves_are_same(self, moves1: List[BasicMove], moves2: List[BasicMove]) -> bool:
         if len(moves1) != len(moves2):
@@ -89,6 +106,11 @@ class LLMBot(BaseAI):
     def play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
         if self.start_of_game:
             self.my_id = game_state.current_player.player_id
+            active_patrons = [
+                p.name for p in game_state.patron_states.patrons.keys() 
+                if p != PatronId.TREASURY
+            ]
+            self.game_patrons_str = ",".join(active_patrons)
             self.start_of_game = False
 
         if self.start_of_turn:
