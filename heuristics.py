@@ -1,7 +1,22 @@
+from math import tanh
 from collections import Counter
 from scripts_of_tribute.board import GameState, EnemyPlayer, PatronId
 from scripts_of_tribute.enums import CardType
 
+class TierEnum:
+    UNKNOWN = 0
+    D = 1
+    C = 2
+    B = 3
+    A = 4
+    S = 5
+
+def get_card_tier(card_name: str) -> int:
+    """Mock tier evaluator. Replace with actual CardTierList logic."""
+    return TierEnum.C
+
+def _normalize(value, min, max) -> float:
+    return (value - min)/(max - min)
 
 def max_prestige(gameState: GameState) -> float:
     player = gameState.current_player
@@ -119,11 +134,11 @@ def greedy_heuristic(gameState: GameState) -> float:
     if enemy.prestige >= 35:
         urgency -= 20.0
 
-    return (
+    return tanh((
         prestige_diff
         + power_diff
         + agent_diff
         + deck_quality * 3.0
         + patron_score
         + urgency
-    )
+    )/100.)

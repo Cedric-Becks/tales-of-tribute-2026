@@ -2,18 +2,139 @@ from abc import abstractmethod
 import os
 import pickle
 import uuid
-from typing import List
-from typing import Tuple
-from typing import Callable
+from typing import List, Tuple, Callable, Optional
 
 from scripts_of_tribute.base_ai import BaseAI
 from scripts_of_tribute.board import GameState, SeededGameState, EndGameState, EnemyPlayer
 from scripts_of_tribute.enums import PatronId, MoveEnum, PlayerEnum
 from scripts_of_tribute.move import BasicMove
 
-from search import Search, MCTSNode
+from search import Search, MCTSNode, LLMNode
 from random import randint, randrange, shuffle
-from time import time
+from time import time, perf_counter
+import random
+
+# --- Mocks for Missing C# Utilities ---
+# --------------------------------------
+
+def moves_are_equal(m1: BasicMove, m2: BasicMove) -> bool:
+    """Helper to check if two moves are functionally identical."""
+    return m1.to_proto().SerializeToString() == m2.to_proto().SerializeToString()
+class LLMBot(BaseAI):
+    """
+    Monte Carlo Tree Search Bot for Scripts of Tribute.
+    """
+    def __init__(self, bot_name: str = "MCTSPythonBot"):
+        super().__init__(bot_name)
+        self.bot_seed = 42
+        self.rng = random.Random(self.bot_seed)
+        
+        self.time_for_move_computation = 0.3 # seconds
+        self.turn_timeout = 29.9 # seconds
+        
+        self.act_root: Optional[LLMNode] = None
+        self.act_node: Optional[LLMNode] = None
+        
+        self.start_of_turn = True
+        self.start_of_game = True
+        self.used_time_in_turn = 0.0
+        
+        self.my_id: Optional[PlayerEnum] = None
+
+    def pregame_prepare(self):
+        self.act_root = None
+        self.act_node = None
+        self.start_of_game = True
+        self.start_of_turn = True
+
+    def select_patron(self, available_patrons: List[PatronId]) -> PatronId:
+        # Fallback to random choice as Apriori is missing from the port.
+        return self.rng.choice(available_patrons)
+
+    def _check_if_moves_are_same(self, moves1: List[BasicMove], moves2: List[BasicMove]) -> bool:
+        if len(moves1) != len(moves2):
+            return False
+        # Create string representations to easily compare equality
+        set1 = {m.to_proto().SerializeToString() for m in moves1}
+        set2 = {m.to_proto().SerializeToString() for m in moves2}
+        return set1 == set2
+
+    def _tree_policy(self, node: LLMNode) -> LLMNode:
+        """Navigates down the tree using the UCB formula."""
+        if node.children:
+            best_score = float('-inf')
+            selected_child = node.children[0]
+            
+            for child in node.children:
+                score = child.ucb_score()
+                if score > best_score:
+                    best_score = score
+                    selected_child = child
+                    
+            return self._tree_policy(selected_child)
+
+        if node.move and node.move.command == MoveEnum.END_TURN:
+            return node
+            
+        node.create_children()
+        return node
+
+    def _back_up(self, node: Optional[LLMNode], delta: float):
+        """Propagates the simulation result back up the tree."""
+        if node is not None:
+            node.visits += 1
+            node.wins = max(delta, node.wins)
+            self._back_up(node.father, delta)
+
+    def play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
+        if self.start_of_game:
+            self.my_id = game_state.current_player.player_id
+            self.start_of_game = False
+
+        if self.start_of_turn:
+            self.act_root = LLMNode(game_state, None, None, possible_moves, seed=self.bot_seed)
+            self.act_root.create_children()
+            self.start_of_turn = False
+            self.used_time_in_turn = 0.0
+        else:
+            if not self._check_if_moves_are_same(self.act_root.possible_moves, possible_moves):
+                self.act_root = LLMNode(game_state, None, None, possible_moves, seed=self.bot_seed)
+                self.act_root.create_children()
+
+        # Check if there is only an END_TURN move available
+        if len(possible_moves) == 1 and possible_moves[0].command == MoveEnum.END_TURN:
+            self.start_of_turn = True
+            self.used_time_in_turn = 0.0
+            return possible_moves[0]
+
+        if self.used_time_in_turn + self.time_for_move_computation >= self.turn_timeout:
+            selected_move = self.rng.choice(possible_moves)
+        else:
+            self.act_root.father = None
+            
+            start_time = perf_counter()
+            while (perf_counter() - start_time) < self.time_for_move_computation:
+                self.act_node = self._tree_policy(self.act_root)
+                delta = self.act_node.simulate(self.rng)
+                self._back_up(self.act_node, delta)
+                
+            self.used_time_in_turn += self.time_for_move_computation
+
+            self.act_root = self.act_root.select_best_child()
+            selected_move = self.act_root.move
+
+        if selected_move and selected_move.command == MoveEnum.END_TURN:
+            self.start_of_turn = True
+            self.used_time_in_turn = 0.0
+
+        return selected_move
+
+    def game_end(self, end_game_state: EndGameState, final_state: GameState):
+        self.pregame_prepare()
+        if end_game_state.winner == self.my_id:
+            # Here you would typically append your winning patron configurations 
+            # to your apriori log file if you plan on retaining that functionality.
+            pass
 
 class Context:
     moves: List[BasicMove]
@@ -181,7 +302,7 @@ class AbstractMCTSBot(BaseAI):
 
     @abstractmethod
     def _play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
-        pass
+        pass    
 
     def play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
         self.context.add_state(game_state)
@@ -217,6 +338,21 @@ class FakeSaccarinaBot(AbstractMCTSBot):
     move_timeout = 0.8
     turn_timeout = 10.
     
+
+    def _move_selection_policy(self) -> BasicMove:
+        # BestChild Selection policy.
+        score = self.tree.min_score
+        winner: BasicMove = list(self.tree.children.keys())[0]
+        for move in self.tree.children:
+            if self.tree.children[move] is not None:
+                # pyrefly: ignore [missing-attribute]
+                node: Search = self.tree.children[move]
+                if node.visits > 0 and node.score/node.visits > score:
+                    winner = move
+                    # pyrefly: ignore [missing-attribute]
+                    score = node.score/node.visits
+        return winner
+
     def _play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
         self.player_id = game_state.current_player.player_id
         best_move: BasicMove | None = self.trivial_move(possible_moves)
@@ -227,7 +363,7 @@ class FakeSaccarinaBot(AbstractMCTSBot):
         self.tree = self.searchTree(sgs, possible_moves)
         
         # This also ensures all children are instantiated.
-        best_move = self.tree.select_winner()
+        best_move = self.tree.select_winner(self.player_id)
         if remaining_time < self.turn_timeout:
                 # pyrefly: ignore [bad-return]
                 return best_move
@@ -237,7 +373,7 @@ class FakeSaccarinaBot(AbstractMCTSBot):
         while (time()-think_start < move_compute_time):
             self._run(self.tree, 0)
         
-        best_move = self.tree.select_winner()
+        best_move = self._move_selection_policy()
         
         # pyrefly: ignore [bad-return]
         return best_move
@@ -245,13 +381,13 @@ class FakeSaccarinaBot(AbstractMCTSBot):
     def _run(self, tree: Search, depth: int) -> float:
         # Bandit child?
         
-        if (tree.visits == 0 and depth > self.max_depth):
+        if depth > self.max_depth:
             tree.leaf = True
         value = 0.
         if tree.leaf:
             value, _ = tree.simulate(self.heuristic, self.player_id)
         else:
-            move = tree.select_winner()
+            move = tree.select_winner(self.player_id)
             if tree.children[move] is None:
                 tree.expand(move)
             # pyrefly: ignore [bad-argument-type]
@@ -274,12 +410,12 @@ class FakeBestMCTS3(AbstractMCTSBot):
             node.score = score
             return score, num_moves+tmp_moves
         num_moves += 1
-        max_score = node.minScore
+        max_score = node.min_score
         # pyrefly: ignore [bad-assignment]
         max_move: BasicMove = None
         for move in node.children:
             child = node.children[move]
-            score: float = node.maxScore
+            score: float = node.max_score
             if child is not None:
                 score = child.ucb_score(node.visits)
             if score >= max_score:
@@ -295,8 +431,8 @@ class FakeBestMCTS3(AbstractMCTSBot):
         fully_expanded = True
         for move in node.children:
             child= node.children[move]
-            fully_expanded &= (child is not None and child.fullyExpanded)
-        node.fullyExpanded = fully_expanded
+            fully_expanded &= (child is not None and child.fully_expanded)
+        node.fully_expanded = fully_expanded
         node.visits += 1
         node.score = max(node.score, result)
         return result, num_moves
@@ -325,10 +461,10 @@ class FakeBestMCTS3(AbstractMCTSBot):
             return bestMove
 
         ref_time = time()
-        while not self.tree.fullyExpanded and time() - ref_time < runtime:
+        while not self.tree.fully_expanded and time() - ref_time < runtime:
             self._run(self.tree, 0)
 
-        max_score = self.tree.minScore
+        max_score = self.tree.min_score
         for move in self.tree.children:
             child = self.tree.children[move]
             if child is not None and child.score >= max_score:

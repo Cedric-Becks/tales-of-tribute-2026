@@ -1,3 +1,4 @@
+from bot import LLMBot
 from bot import FakeBestMCTS3
 from bot import FakeSaccarinaBot
 import multiprocessing
@@ -38,14 +39,16 @@ def run_grpc_server(
 def main(run_game: bool):
     game = Game()
     if run_game:
+        llm_bot = LLMBot("llm")
         saccarina_bot = FakeSaccarinaBot("saccarina", MCTSNode, greedy_heuristic)
         mcts3_bot = FakeBestMCTS3("mcts3", MCTSNode, greedy_heuristic)
         game.register_bot(saccarina_bot)
         game.register_bot(mcts3_bot)
+        game.register_bot(llm_bot)
 
         game.run(
+            "llm",
             "saccarina",
-            "MCTSBot",
             start_game_runner=True,
             runs=RUNS,
             threads=THREADS,
