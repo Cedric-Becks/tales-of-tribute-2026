@@ -8,7 +8,7 @@ from typing import Callable
 
 from scripts_of_tribute.base_ai import BaseAI
 from scripts_of_tribute.board import GameState, SeededGameState, EndGameState, EnemyPlayer
-from scripts_of_tribute.enums import PatronId, MoveEnum
+from scripts_of_tribute.enums import PatronId, MoveEnum, PlayerEnum
 from scripts_of_tribute.move import BasicMove
 
 from search import Search, MCTSNode
@@ -138,15 +138,16 @@ class AbstractMCTSBot(BaseAI):
     heuristic: Callable[[GameState], float]
     tree: Search
     time_used: float
+    player_id: PlayerEnum
 
-    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], float], strategy: str = "saccarina") -> None:
+    def __init__(self, name: str, search_tree: type[Search], heuristic: Callable[[GameState], float]) -> None:
         super().__init__(bot_name=name)
         self.searchTree = search_tree
         self.heuristic = heuristic
-        self.strategy = strategy
         self.seed = randint(0,1000000)
         self.context = Context()
         self.time_used = 0.
+        self.player_id = PlayerEnum.NO_PLAYER_SELECTED
 
     def convert_gamestate(self, game_state: GameState) -> SeededGameState:
         return SeededGameState(
@@ -172,6 +173,7 @@ class AbstractMCTSBot(BaseAI):
         self.seed = randint(0,1000000)
         self.context = Context()
         self.time_used = 0.
+        self.player_id = PlayerEnum.NO_PLAYER_SELECTED
 
     def select_patron(self, available_patrons: List[PatronId]) -> PatronId:
         priority: int = randrange(len(available_patrons))
@@ -214,9 +216,9 @@ class FakeSaccarinaBot(AbstractMCTSBot):
     max_depth = 20
     move_timeout = 0.8
     turn_timeout = 10.
-
+    
     def _play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
-
+        self.player_id = game_state.current_player.player_id
         best_move: BasicMove | None = self.trivial_move(possible_moves)
         if best_move is not None:
             return best_move
@@ -237,7 +239,6 @@ class FakeSaccarinaBot(AbstractMCTSBot):
         
         best_move = self.tree.select_winner()
         
-        self.time_used += time()-think_start
         # pyrefly: ignore [bad-return]
         return best_move
 
@@ -248,7 +249,7 @@ class FakeSaccarinaBot(AbstractMCTSBot):
             tree.leaf = True
         value = 0.
         if tree.leaf:
-            value, _ = tree.simulate(self.heuristic)
+            value, _ = tree.simulate(self.heuristic, self.player_id)
         else:
             move = tree.select_winner()
             if tree.children[move] is None:
@@ -268,7 +269,7 @@ class FakeBestMCTS3(AbstractMCTSBot):
 
     def _run(self, node: Search, num_moves: int)-> Tuple[float, int]:
         if (node.leaf or node.visits == 0):
-            score, tmp_moves = node.simulate(self.heuristic)
+            score, tmp_moves = node.simulate(self.heuristic, self.player_id)
             node.visits += 1
             node.score = score
             return score, num_moves+tmp_moves
@@ -302,6 +303,7 @@ class FakeBestMCTS3(AbstractMCTSBot):
 
 
     def _play(self, game_state: GameState, possible_moves: List[BasicMove], remaining_time: int) -> BasicMove:
+        self.player_id = game_state.current_player.player_id
         if len(possible_moves) == 1:
             return possible_moves[0]
 

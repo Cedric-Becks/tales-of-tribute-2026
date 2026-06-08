@@ -38,8 +38,8 @@ def run_grpc_server(
 def main(run_game: bool):
     game = Game()
     if run_game:
-        saccarina_bot = FakeSaccarinaBot("saccarina", MCTSNode, greedy_heuristic, strategy="saccarina")
-        mcts3_bot = FakeBestMCTS3("mcts3", MCTSNode, greedy_heuristic, strategy="mcts3")
+        saccarina_bot = FakeSaccarinaBot("saccarina", MCTSNode, greedy_heuristic)
+        mcts3_bot = FakeBestMCTS3("mcts3", MCTSNode, greedy_heuristic)
         game.register_bot(saccarina_bot)
         game.register_bot(mcts3_bot)
 

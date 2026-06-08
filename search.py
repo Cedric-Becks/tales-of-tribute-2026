@@ -11,7 +11,7 @@ from math import log, sqrt, inf
 from abc import ABC, abstractmethod
 
 from scripts_of_tribute.move import BasicMove
-from scripts_of_tribute.enums import MoveEnum
+from scripts_of_tribute.enums import MoveEnum, PlayerEnum
 from scripts_of_tribute.board import GameState
 
 @total_ordering
@@ -41,7 +41,7 @@ class Search(ABC):
         return self.score == other.score
 
     @abstractmethod
-    def simulate(self, heuristic: Callable[[GameState], float]) -> Tuple[float, int]:
+    def simulate(self, heuristic: Callable[[GameState], float], root_player_id: PlayerEnum) -> Tuple[float, int]:
         pass
 
     @abstractmethod
@@ -64,8 +64,10 @@ class Search(ABC):
             if self.children[move] is None:
                 self.expand(move)
             # pyrefly: ignore [missing-attribute]
-            if self.children[move].ucb_score(self.visits) > score:
+            _score = self.children[move].ucb_score(self.visits)
+            if _score > score:
                 best_move= move
+                score = _score
 
         return best_move
 
@@ -96,7 +98,7 @@ class MCTSNode(Search):
     def base_score(self, heuristic: Callable[[GameState], float])-> float:
         return heuristic(self.gameState)
 
-    def simulate(self, heuristic: Callable[[GameState], float]) -> Tuple[float, int]:
+    def simulate(self, heuristic: Callable[[GameState], float], root_player_id: PlayerEnum) -> Tuple[float, int]:
         if self.leaf:
             return heuristic(self.gameState), 0
         moveCount = 0
@@ -111,4 +113,7 @@ class MCTSNode(Search):
                 move = moves[randrange(len(moves))]
             else:
                 break
-        return heuristic(state), moveCount
+        score: float = heuristic(state)
+        if state.current_player.player_id != root_player_id:
+            score = -score
+        return score, moveCount
